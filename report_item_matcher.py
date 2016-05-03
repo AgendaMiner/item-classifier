@@ -21,14 +21,33 @@ def main():
 			 'East Side Union High School District \nDate/time/location item will be heard:  December 10, 2015', 
 			 'East Side Union High School District Board of Trustees', 
 			 'East Side Union HSD Board of Trustees', 
-			 'East Side Union High School District \u2013 Citizens\u2019 Bond Oversight Cmte']}
+			 'East Side Union High School District \u2013 Citizens\u2019 Bond Oversight Cmte']},
+		{'agency_id':'san_jose_evergreen_ccd', 'aliases':
+			['San Jose/Evergreen Community College District Board of Directors',
+			'San Jose Evergreen Community College District',
+			'San Jose Evergreen Board of Trustees',
+			'San Jose-Evergreen Board of Trustees',
+			'SJECCD Governing Board',
+			'San Jose Evergreen Community College District Governing Board',
+			'San Jose/ Evergreen CCD',
+			'San Jose/Evergreen Community College District',
+			'San Jose Evergreen Community College District Board of Trustees',
+			'San Jose Evergreen Community College District Board of Directors',
+			'San Jose-Evergreen Community College District Board of Directors',
+			'San Jose Evergreen Community College District - Legislative Committee',
+			'San Jose Evergreen Community College Board of Trustees'
+			]
+		}
 	]
 
 	reports_df = buildDataFrameOfReports('../agenda-parser/docs/training_data/structured_reports/')
+	reports_df.to_csv("data/all_report_items.csv", encoding="utf-8", index=False)
+
 	items_df = buildDataFrameOfAgendaItems('../agenda-parser/docs', parsed_agencies)
 
 	matchReportsToItems(reports_df, items_df, parsed_agencies)
 	items_df.to_csv("data/matched_items.csv", encoding="utf-8", index=False)
+	# TODO - ONLY SAVE OUT ITEMS WITHIN DATE RANGE OF TRAINING DATA - after May 1st 2015
 
 
 
@@ -47,6 +66,7 @@ def buildDataFrameOfReports(directory_path):
 		if filename.endswith(".json"):
 			filepath = os.path.join(directory_path, filename)
 			df = pd.read_json(filepath)
+			df['report_name'] = filename
 			df_list.append(df)
 
 	return pd.concat(df_list)
@@ -110,6 +130,7 @@ def matchReportsToItems(reports_df, items_df, parsed_agencies):
 	items_df['priority_ibew'] = None
 	items_df['priority_unite'] = None
 	items_df['match_id'] = range(1, len(items_df)+1)
+	# items_df['match_confirmed'] = False
 
 	for i, row in reports_df.iterrows():
 
@@ -125,8 +146,9 @@ def matchReportsToItems(reports_df, items_df, parsed_agencies):
 
 		# get other identifying information
 		if not len(row['meeting_date']):
+			print "MISSING DATE"
+			print row
 			continue
-			# TODO - PROBLEM: MANY DATES ARE BLANK, NEED TO IMPROVE PARSER
 
 		# check if this includes multiple item numbers
 		if re.search(r',|\+', row['item_number']):
@@ -159,27 +181,61 @@ def matchItem(agency_id, meeting_date, item_number, row, items_df):
 	meeting_df = items_df[(items_df['agency'] == agency_id) & (items_df['meeting_date'] == meeting_date)]
 	if len(meeting_df) == 0:
 		print("ERROR: could not find agenda for %s on %s" % (agency_id, meeting_date))
+		print row
 		return
 
 	print("-------") # separator line
 	print("%s, %s, %s" %(agency_id, meeting_date, item_number))
 
+	# create a cleaned item name
+	clean_item_name = re.sub(r'\W+', ' ', row['item_name']).lower()
+
+	# some item name strings have multiple items separated with semicolons
+	item_name_list = re.split(r';\s*', row['item_name'])
+
 	# try matching with the item number and item name
-	match = meeting_df[(meeting_df['item_number'] == item_number) & (meeting_df['item_text'] == row['item_name'])]
+	match = meeting_df[(meeting_df['item_number'] == item_number) & (meeting_df['item_text'].str.contains(row['item_name']))]
 	if item_number is not None and not match.empty:
 		print("Match on name and number")
+		match_success = True
+
+	# try matching on the item name
+	elif not match_success and not meeting_df[meeting_df['item_text'].str.contains(row['item_name'])].empty:
+		match = meeting_df[meeting_df['item_text'].str.contains(row['item_name'])]
+		print("Match on item name")
+		match_success = True
+
+	# try matching on a sanitized item name
+	elif not match_success and not meeting_df[meeting_df['item_text'].str.lower().str.replace(r'\W+', ' ').str.contains(clean_item_name)].empty:
+		match = meeting_df[meeting_df['item_text'].str.lower().str.replace(r'\W+', ' ').str.contains(clean_item_name)]
+		print("Match on cleaned item name")
+		print("REPORT ITEM NAME: %s" % row['item_name'])
+		if len(match['item_text']) == 1:
+			print("AGENDA ITEM NAME: %s" % match['item_text'].item())
+		else:
+			print("AGENDA ITEM NAME: %s" % match['item_text'])
+
+		match_success = True
+
+
+	# try matching on any of the components of the item name
+	elif len(item_name_list) > 1 and not meeting_df[meeting_df['item_text'].isin(item_name_list)].empty:
+		match = meeting_df[meeting_df['item_text'].isin(item_name_list)]
+		print("Match on item name component")
 		match_success = True
 
 	# try matching on the item number
 	elif item_number is not None and not meeting_df[meeting_df['item_number'] == item_number].empty:
 		match = meeting_df[meeting_df['item_number'] == item_number]
 		print("Match on item number")
-		match_success = True
 
-	# try matching on the item name
-	elif not match_success and not meeting_df[meeting_df['item_text'] == row['item_name']].empty:
-		match = meeting_df[meeting_df['item_text'] == row['item_name']]
-		print("Match on item name")
+		# print stuff for human match confirmation
+		print("REPORT ITEM NAME: %s" % row['item_name'])
+		if len(match['item_text']) == 1:
+			print("AGENDA ITEM NAME: %s" % match['item_text'].item())
+		else:
+			print("AGENDA ITEM NAME: %s" % match['item_text'])
+
 		match_success = True
 
 	else:
@@ -187,9 +243,7 @@ def matchItem(agency_id, meeting_date, item_number, row, items_df):
 		print("Agency: %s, Date: %s, Item: %s" % (agency_id, meeting_date, row['item_name']))
 		return
 
-	# print stuff for human match confirmation
-	print("REPORT ITEM NAME: %s" % row['item_name'])
-	print("AGENDA ITEM NAME: %s" % match['item_text'].item())
+	
 
 	# get the match_id
 	match_id = match.iloc[0]['match_id']
