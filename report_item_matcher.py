@@ -3,6 +3,7 @@ import os
 import json
 import pickle
 import re
+from nltk.tokenize import sent_tokenize
 
 def main():
 
@@ -46,8 +47,7 @@ def main():
 	items_df = buildDataFrameOfAgendaItems('../agenda-parser/docs', parsed_agencies)
 
 	matchReportsToItems(reports_df, items_df, parsed_agencies)
-	items_df.to_csv("data/matched_items.csv", encoding="utf-8", index=False)
-	# TODO - ONLY SAVE OUT ITEMS WITHIN DATE RANGE OF TRAINING DATA - after May 1st 2015
+	writeTrainingDataToDisk(items_df)
 
 
 
@@ -165,17 +165,13 @@ def matchReportsToItems(reports_df, items_df, parsed_agencies):
 
 
 
-
-
 '''
 matchItem
 =========
 Attempts to match a report row with a row in items_df. 
-If successful, sets the hand-codede priority values for that row.
+If successful, sets the hand-coded priority values for that row.
 '''
 def matchItem(agency_id, meeting_date, item_number, row, items_df):
-
-	match_success = False
 
 	# subset to the agency and meeting date
 	meeting_df = items_df[(items_df['agency'] == agency_id) & (items_df['meeting_date'] == meeting_date)]
@@ -188,25 +184,31 @@ def matchItem(agency_id, meeting_date, item_number, row, items_df):
 	print("%s, %s, %s" %(agency_id, meeting_date, item_number))
 
 	# create a cleaned item name
+	# clean_item_name = re.sub(r'\+', 'on', row['item_name'])
 	clean_item_name = re.sub(r'\W+', ' ', row['item_name']).lower()
 
 	# some item name strings have multiple items separated with semicolons
 	item_name_list = re.split(r';\s*', row['item_name'])
+	clean_item_name_list = []
+	for name_comp in item_name_list:
+		clean_item_name_list.append(re.sub(r'\W+', ' ', name_comp).lower())
+
+	# if len(item_name_list) <= 1:
+	# 	# some item name strings have multiple sentences that are actually different items - NOT WORKING
+	# 	item_name_list = sent_tokenize(re.sub(r'\+', 'on', row['item_name']))
 
 	# try matching with the item number and item name
 	match = meeting_df[(meeting_df['item_number'] == item_number) & (meeting_df['item_text'].str.contains(row['item_name']))]
 	if item_number is not None and not match.empty:
 		print("Match on name and number")
-		match_success = True
 
 	# try matching on the item name
-	elif not match_success and not meeting_df[meeting_df['item_text'].str.contains(row['item_name'])].empty:
+	elif not meeting_df[meeting_df['item_text'].str.contains(row['item_name'])].empty:
 		match = meeting_df[meeting_df['item_text'].str.contains(row['item_name'])]
 		print("Match on item name")
-		match_success = True
 
 	# try matching on a sanitized item name
-	elif not match_success and not meeting_df[meeting_df['item_text'].str.lower().str.replace(r'\W+', ' ').str.contains(clean_item_name)].empty:
+	elif not meeting_df[meeting_df['item_text'].str.lower().str.replace(r'\W+', ' ').str.contains(clean_item_name)].empty:
 		match = meeting_df[meeting_df['item_text'].str.lower().str.replace(r'\W+', ' ').str.contains(clean_item_name)]
 		print("Match on cleaned item name")
 		print("REPORT ITEM NAME: %s" % row['item_name'])
@@ -215,14 +217,15 @@ def matchItem(agency_id, meeting_date, item_number, row, items_df):
 		else:
 			print("AGENDA ITEM NAME: %s" % match['item_text'])
 
-		match_success = True
-
-
 	# try matching on any of the components of the item name
 	elif len(item_name_list) > 1 and not meeting_df[meeting_df['item_text'].isin(item_name_list)].empty:
 		match = meeting_df[meeting_df['item_text'].isin(item_name_list)]
 		print("Match on item name component")
-		match_success = True
+	
+	# try matching on any of the components of the cleaned item name
+	elif len(clean_item_name_list) > 1 and not meeting_df[meeting_df['item_text'].str.lower().str.replace(r'\W+', ' ').isin(clean_item_name_list)].empty:
+		match = meeting_df[meeting_df['item_text'].str.lower().str.replace(r'\W+', ' ').isin(clean_item_name_list)]
+		print("Match on cleaned item name component")
 
 	# try matching on the item number
 	elif item_number is not None and not meeting_df[meeting_df['item_number'] == item_number].empty:
@@ -236,14 +239,11 @@ def matchItem(agency_id, meeting_date, item_number, row, items_df):
 		else:
 			print("AGENDA ITEM NAME: %s" % match['item_text'])
 
-		match_success = True
-
 	else:
 		print("ERROR: Could not find match")
 		print("Agency: %s, Date: %s, Item: %s" % (agency_id, meeting_date, row['item_name']))
 		return
 
-	
 
 	# get the match_id
 	match_id = match.iloc[0]['match_id']
@@ -255,6 +255,21 @@ def matchItem(agency_id, meeting_date, item_number, row, items_df):
 	items_df.loc[items_df['match_id'] == match_id, 'priority_unite'] = row['priority_unite']
 
 
+'''
+writeTrainingDataToDisk
+=======================
+Subsets the items DF to the time period covered by the reports, 
+then writes out the DF to disk.
+'''
+def writeTrainingDataToDisk(items_df):
+
+	# subset to items after the start date
+	start_date = "05-01-2015" # change this if expand dataset
+	items_df['meeting_date'] = pd.to_datetime(items_df['meeting_date'], format='%m-%d-%Y')
+	covered_items_df = items_df[items_df['meeting_date'] >= start_date]
+
+	# write to disk
+	covered_items_df.to_csv("data/training_data.csv", encoding="utf-8", index=False)
 
 
 
