@@ -1,4 +1,4 @@
-- try dateuntils parser
+- try dateutils parser
 
 # TODO
 - compile manifest on what files I have

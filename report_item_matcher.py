@@ -7,39 +7,42 @@ from nltk.tokenize import sent_tokenize
 
 def main():
 
-	parsed_agencies = [
-		{'agency_id': 'foothill_de_anza_ccd', 'aliases': 
-			['Foothill-DeAnza Community College District Board of Trustees', 
-			 'Foothill De Anza Community College District', 
-			 'Foothill-De Anza Community College District', 
-			 'Foothill De Anza Board of Trustees', 
-			 'Foothill-De Anza Community College District Board of Trustees', 
-			 'Foothill De Anza Community College District Board of Trustees', 
-			 'Foothill De Anza Citizen\u2019s Bond Oversight Cmte']},
-		{'agency_id': 'east_side_uhsd', 'aliases': 
-			['East Side Union Board of Trustees', 
-			 'East Side Union High School District', 
-			 'East Side Union High School District \nDate/time/location item will be heard:  December 10, 2015', 
-			 'East Side Union High School District Board of Trustees', 
-			 'East Side Union HSD Board of Trustees', 
-			 'East Side Union High School District \u2013 Citizens\u2019 Bond Oversight Cmte']},
-		{'agency_id':'san_jose_evergreen_ccd', 'aliases':
-			['San Jose/Evergreen Community College District Board of Directors',
-			'San Jose Evergreen Community College District',
-			'San Jose Evergreen Board of Trustees',
-			'San Jose-Evergreen Board of Trustees',
-			'SJECCD Governing Board',
-			'San Jose Evergreen Community College District Governing Board',
-			'San Jose/ Evergreen CCD',
-			'San Jose/Evergreen Community College District',
-			'San Jose Evergreen Community College District Board of Trustees',
-			'San Jose Evergreen Community College District Board of Directors',
-			'San Jose-Evergreen Community College District Board of Directors',
-			'San Jose Evergreen Community College District - Legislative Committee',
-			'San Jose Evergreen Community College Board of Trustees'
-			]
-		}
-	]
+	with open('../agenda-parser/agencies_list.json') as data_file:
+		parsed_agencies = json.load(data_file)
+
+	# parsed_agencies = [
+	# 	{'agency_id': 'foothill_de_anza_ccd', 'aliases': 
+	# 		['Foothill-DeAnza Community College District Board of Trustees', 
+	# 		 'Foothill De Anza Community College District', 
+	# 		 'Foothill-De Anza Community College District', 
+	# 		 'Foothill De Anza Board of Trustees', 
+	# 		 'Foothill-De Anza Community College District Board of Trustees', 
+	# 		 'Foothill De Anza Community College District Board of Trustees', 
+	# 		 'Foothill De Anza Citizen\u2019s Bond Oversight Cmte']},
+	# 	{'agency_id': 'east_side_uhsd', 'aliases': 
+	# 		['East Side Union Board of Trustees', 
+	# 		 'East Side Union High School District', 
+	# 		 'East Side Union High School District \nDate/time/location item will be heard:  December 10, 2015', 
+	# 		 'East Side Union High School District Board of Trustees', 
+	# 		 'East Side Union HSD Board of Trustees', 
+	# 		 'East Side Union High School District \u2013 Citizens\u2019 Bond Oversight Cmte']},
+	# 	{'agency_id':'san_jose_evergreen_ccd', 'aliases':
+	# 		['San Jose/Evergreen Community College District Board of Directors',
+	# 		'San Jose Evergreen Community College District',
+	# 		'San Jose Evergreen Board of Trustees',
+	# 		'San Jose-Evergreen Board of Trustees',
+	# 		'SJECCD Governing Board',
+	# 		'San Jose Evergreen Community College District Governing Board',
+	# 		'San Jose/ Evergreen CCD',
+	# 		'San Jose/Evergreen Community College District',
+	# 		'San Jose Evergreen Community College District Board of Trustees',
+	# 		'San Jose Evergreen Community College District Board of Directors',
+	# 		'San Jose-Evergreen Community College District Board of Directors',
+	# 		'San Jose Evergreen Community College District - Legislative Committee',
+	# 		'San Jose Evergreen Community College Board of Trustees'
+	# 		]
+	# 	}
+	# ]
 
 	reports_df = buildDataFrameOfReports('../agenda-parser/docs/training_data/structured_reports/')
 	reports_df.to_csv("data/all_report_items.csv", encoding="utf-8", index=False)
