@@ -12,7 +12,8 @@ def main():
 
 	df = prepDataset('data/training_data.csv')
 	datasets = splitTrainingTestingDFs(df, 'priority_wpusa_any')
-	classifyLasso(datasets)
+	# classifyLasso(datasets)
+	classifyLogisticRegression(datasets)
 
 
 
@@ -130,9 +131,19 @@ def classifyLasso(datasets):
 	# print(metrics.precision_recall_fscore_support(datasets['y_test'], pred_classes))
 
 
-
-
-
+'''
+classifyLogisticRegression
+==========================
+Builds a Logistic Regression classifier from the training dataset,
+then tests how well it performs on the testing data.
+'''
+def classifyLogisticRegression(datasets):
+	log_cv = linear_model.LogisticRegressionCV(cv=10, penalty='l1', scoring='recall', solver='liblinear', n_jobs=-1, verbose=1)
+	log_cv.fit(datasets['X_train'], datasets['y_train'])
+	preds = log_cv.predict(datasets['X_test'])
+	print(metrics.classification_report(datasets['y_test'], preds))
+	print(metrics.confusion_matrix(datasets['y_test'], preds))
+	print(preds)
 
 
 
