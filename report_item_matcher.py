@@ -5,44 +5,12 @@ import pickle
 import re
 from nltk.tokenize import sent_tokenize
 
+pd.set_option('display.max_colwidth', 800)
+
 def main():
 
 	with open('../agenda-parser/agencies_list.json') as data_file:
 		parsed_agencies = json.load(data_file)
-
-	# parsed_agencies = [
-	# 	{'agency_id': 'foothill_de_anza_ccd', 'aliases': 
-	# 		['Foothill-DeAnza Community College District Board of Trustees', 
-	# 		 'Foothill De Anza Community College District', 
-	# 		 'Foothill-De Anza Community College District', 
-	# 		 'Foothill De Anza Board of Trustees', 
-	# 		 'Foothill-De Anza Community College District Board of Trustees', 
-	# 		 'Foothill De Anza Community College District Board of Trustees', 
-	# 		 'Foothill De Anza Citizen\u2019s Bond Oversight Cmte']},
-	# 	{'agency_id': 'east_side_uhsd', 'aliases': 
-	# 		['East Side Union Board of Trustees', 
-	# 		 'East Side Union High School District', 
-	# 		 'East Side Union High School District \nDate/time/location item will be heard:  December 10, 2015', 
-	# 		 'East Side Union High School District Board of Trustees', 
-	# 		 'East Side Union HSD Board of Trustees', 
-	# 		 'East Side Union High School District \u2013 Citizens\u2019 Bond Oversight Cmte']},
-	# 	{'agency_id':'san_jose_evergreen_ccd', 'aliases':
-	# 		['San Jose/Evergreen Community College District Board of Directors',
-	# 		'San Jose Evergreen Community College District',
-	# 		'San Jose Evergreen Board of Trustees',
-	# 		'San Jose-Evergreen Board of Trustees',
-	# 		'SJECCD Governing Board',
-	# 		'San Jose Evergreen Community College District Governing Board',
-	# 		'San Jose/ Evergreen CCD',
-	# 		'San Jose/Evergreen Community College District',
-	# 		'San Jose Evergreen Community College District Board of Trustees',
-	# 		'San Jose Evergreen Community College District Board of Directors',
-	# 		'San Jose-Evergreen Community College District Board of Directors',
-	# 		'San Jose Evergreen Community College District - Legislative Committee',
-	# 		'San Jose Evergreen Community College Board of Trustees'
-	# 		]
-	# 	}
-	# ]
 
 	reports_df = buildDataFrameOfReports('../agenda-parser/docs/training_data/structured_reports/')
 	reports_df.to_csv("data/all_report_items.csv", encoding="utf-8", index=False)
@@ -72,7 +40,7 @@ def buildDataFrameOfReports(directory_path):
 			df['report_name'] = filename
 			df_list.append(df)
 
-	return pd.concat(df_list)
+	return pd.concat(df_list, ignore_index=True)
 
 
 
@@ -81,6 +49,8 @@ buildDataFrameOfAgendaItems
 ===========================
 Given a list of parsed agencies and the path to a directory containing the data for each parsed agency, 
 get all the structured agendas, convert them to a Pandas DF, then concat all the DFs together.
+If there is a csv file containing hand-matched items, load this as well, subset it to hand-matched items,
+and join this with the other DF.
 Returns the combines DF.
 '''
 def buildDataFrameOfAgendaItems(base_dir, parsed_agencies):
@@ -112,7 +82,14 @@ def buildDataFrameOfAgendaItems(base_dir, parsed_agencies):
 				if not df.empty:
 					df_list.append(df)
 
-	return pd.concat(df_list)
+	all_items_df = pd.concat(df_list, ignore_index=True)
+
+	hand_matched_filepath = "data/training_data.csv"
+	if os.path.exists(hand_matched_filepath):
+		hand_matched_df = pd.read_csv(hand_matched_filepath, index_col='match_id')
+		print(hand_matched_df.head())
+
+	return pd.concat(df_list, ignore_index=True)
 	
 
 '''
@@ -132,8 +109,8 @@ def matchReportsToItems(reports_df, items_df, parsed_agencies):
 	items_df['priority_sblc'] = None
 	items_df['priority_ibew'] = None
 	items_df['priority_unite'] = None
-	items_df['match_id'] = range(1, len(items_df)+1)
-	# items_df['match_confirmed'] = False
+	items_df['match_confirmed'] = False
+	generateItemIDs(items_df)
 
 	for i, row in reports_df.iterrows():
 
@@ -166,7 +143,29 @@ def matchReportsToItems(reports_df, items_df, parsed_agencies):
 			matchItem(agency_id, row['meeting_date'], None, row, items_df)
 
 
+'''
+generateItemIDs
+===============
+Uses the agency and date to generate a unique ID code for each agenda item.
+'''
+def generateItemIDs(items_df):
+	items_df['match_id'] = None
 
+	# position vars
+	cur_item_num = 0001
+	cur_agency = items_df.ix[0, 'agency']
+	cur_date = items_df.ix[0, 'meeting_date']
+
+	for i, row in items_df.iterrows():
+		if row['agency'] != cur_agency or row['meeting_date'] != cur_date:
+			cur_agency = row['agency']
+			cur_date = row['meeting_date']
+			cur_item_num = 1
+
+		match_id = "%s_%s_%04d" % (row['agency'], row['meeting_date'], cur_item_num)
+		items_df.set_value(i, 'match_id', match_id)
+
+		cur_item_num += 1
 
 '''
 matchItem
@@ -244,7 +243,8 @@ def matchItem(agency_id, meeting_date, item_number, row, items_df):
 
 	else:
 		print("ERROR: Could not find match")
-		print("Agency: %s, Date: %s, Item: %s" % (agency_id, meeting_date, row['item_name']))
+		print(row)
+		# print("Agency: %s, Date: %s, Item: %s" % (agency_id, meeting_date, row['item_name']))
 		return
 
 

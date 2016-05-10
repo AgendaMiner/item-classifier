@@ -71,7 +71,7 @@ Returns the DTM as a pandas DF.
 def buildDTM(df, colname):
 	text_list = df[colname].tolist()
 
-	vectorizer = CountVectorizer(strip_accents="ascii", ngram_range=(1,3), min_df=0.01) #### TODO - CUT DOWN THE NUMBER OF FEATURES
+	vectorizer = CountVectorizer(strip_accents="ascii", ngram_range=(1,3), stop_words='english', max_df=0.8, min_df=0.001) #### TODO - CUT DOWN THE NUMBER OF FEATURES
 	counts_matrix = vectorizer.fit_transform(text_list)
 
 	# convert counts matrix to pandas df
@@ -142,7 +142,6 @@ def classifyLasso(datasets):
 	pred_classes = np.where(raw_preds >= 0.5, 1, 0)
 	print pred_classes
 	print(metrics.accuracy_score(datasets['y_test'], pred_classes))
-	# print(metrics.precision_recall_fscore_support(datasets['y_test'], pred_classes))
 
 
 '''
@@ -158,7 +157,7 @@ def classifyLogisticRegression(datasets, info_df):
 	printNonZeroCoefficients(log_cv, datasets)
 	print(metrics.classification_report(datasets['y_test'], preds))
 	print(metrics.confusion_matrix(datasets['y_test'], preds))
-	# matchPredsToInfoDF(datasets['y_test'], preds, datasets['ids_test'], info_df)
+	matchPredsToInfoDF(datasets['y_test'], preds, datasets['ids_test'], info_df)
 
 '''
 printNonZeroCoefficients
