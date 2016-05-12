@@ -267,7 +267,7 @@ then writes out the DF to disk.
 def writeTrainingDataToDisk(items_df):
 
 	# subset to items after the start date
-	start_date = "05-01-2015" # change this if expand dataset
+	start_date = "01-01-2013" # change this if expand dataset
 	items_df['meeting_date'] = pd.to_datetime(items_df['meeting_date'], format='%m-%d-%Y')
 	covered_items_df = items_df[items_df['meeting_date'] >= start_date]
 

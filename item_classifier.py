@@ -44,6 +44,12 @@ def prepDataset(csv_filepath):
 	agency_types = {agency['agency_id']: agency['agency_type'] for agency in agencies_list}
 	info_df['agency_type'] = info_df['agency'].map(agency_types)
 
+	# remove any lines where item text is NaN
+	info_df = info_df.dropna(subset = ['item_text'])
+	# redefine the index to fix merge issues with the dtm
+	info_df.index = range(0,len(info_df))
+
+
 	# convert text to DTM
 	dtm = buildDTM(info_df, 'item_text')
 
@@ -71,9 +77,9 @@ Returns the DTM as a pandas DF.
 def buildDTM(df, colname):
 	text_list = df[colname].tolist()
 
-	vectorizer = CountVectorizer(strip_accents="ascii", ngram_range=(1,3), stop_words='english', max_df=0.8, min_df=0.001) #### TODO - CUT DOWN THE NUMBER OF FEATURES
+	vectorizer = CountVectorizer(strip_accents="ascii", ngram_range=(1,3), stop_words='english', max_df=0.9, min_df=0.001) #### TODO - CUT DOWN THE NUMBER OF FEATURES
 	counts_matrix = vectorizer.fit_transform(text_list)
-
+	
 	# convert counts matrix to pandas df
 	return pd.DataFrame(counts_matrix.toarray(), columns=vectorizer.get_feature_names())
 
@@ -99,9 +105,6 @@ def splitTrainingTestingDFs(df, y_colname, id_colname):
 	y_test = np.concatenate((pos_y_test, neg_y_test), axis=0)
 	ids_train = np.concatenate((pos_ids_train, neg_ids_train), axis=0)
 	ids_test = np.concatenate((pos_ids_test, neg_ids_test), axis=0)
-	# print pos_X_test.shape
-	# print neg_X_test.shape
-	# print X_test.shape
 
 	# build a list of feature names
 	df.drop([y_colname, id_colname], axis=1, inplace=True)
@@ -153,11 +156,12 @@ then tests how well it performs on the testing data.
 def classifyLogisticRegression(datasets, info_df):
 	log_cv = linear_model.LogisticRegressionCV(cv=10, penalty='l1', scoring='recall', solver='liblinear', n_jobs=-1)
 	log_cv.fit(datasets['X_train'], datasets['y_train'])
+
 	preds = log_cv.predict(datasets['X_test'])
 	printNonZeroCoefficients(log_cv, datasets)
 	print(metrics.classification_report(datasets['y_test'], preds))
 	print(metrics.confusion_matrix(datasets['y_test'], preds))
-	matchPredsToInfoDF(datasets['y_test'], preds, datasets['ids_test'], info_df)
+	# matchPredsToInfoDF(datasets['y_test'], preds, datasets['ids_test'], info_df)
 
 '''
 printNonZeroCoefficients
