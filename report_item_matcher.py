@@ -13,7 +13,7 @@ def main():
 		parsed_agencies = json.load(data_file)
 
 	reports_df = buildDataFrameOfReports('../agenda-parser/docs/training_data/structured_reports/')
-	reports_df.to_csv("data/all_report_items.csv", encoding="utf-8", index=False)
+	# reports_df.to_csv("data/all_report_items.csv", encoding="utf-8", index=False)
 
 	items_df = buildDataFrameOfAgendaItems('../agenda-parser/docs', parsed_agencies)
 
@@ -84,13 +84,55 @@ def buildDataFrameOfAgendaItems(base_dir, parsed_agencies):
 
 	all_items_df = pd.concat(df_list, ignore_index=True)
 
+	return mergeHandMatched(all_items_df)
+	
+'''
+mergeHandMatched
+================
+If there is an existing csv of agenda items,
+merge it with the newly generated df of agenda items,
+keeping the old entries that were hand matched or hand classified.
+'''
+def mergeHandMatched(new_items_df):
+
+	# add columns to the new items_df
+	new_items_df['priority_wpusa'] = None
+	new_items_df['priority_sblc'] = None
+	new_items_df['priority_ibew'] = None
+	new_items_df['priority_unite'] = None
+	new_items_df['match_confirmed'] = False
+	new_items_df['hand_classified'] = False
+	new_items_df['topic_labor'] = None
+	new_items_df['topic_contracting'] = None
+	new_items_df['topic_charters'] = None
+	new_items_df['topic_leadership'] = None
+	new_items_df['topic_job_training'] = None
+	new_items_df['topic_other'] = None
+
+	generateItemIDs(new_items_df)
+	new_items_df.set_index('match_id', drop=False, inplace=True)
+
 	hand_matched_filepath = "data/training_data.csv"
 	if os.path.exists(hand_matched_filepath):
-		hand_matched_df = pd.read_csv(hand_matched_filepath, index_col='match_id')
-		print(hand_matched_df.head())
+		hm_df = pd.read_csv(hand_matched_filepath, index_col='match_id')
+		# subset to items that have been hand matched/classified
+		# hand_matched_only = hm_df.loc[(hm_df["match_confirmed"] == True)]
+		hand_matched_only = hm_df.loc[(hm_df["match_confirmed"] == True) | 
+			(hm_df["topic_labor"] == 1) | 
+			(hm_df["topic_contracting"] == 1) | 
+			(hm_df["topic_charters"] == 1) | 
+			(hm_df["topic_leadership"] == 1) | 
+			(hm_df["topic_job_training"] == 1) | 
+			(hm_df["topic_other"] == 1)]
+		hand_matched_only['meeting_date'] = pd.to_datetime(hand_matched_only['meeting_date'])
+		hand_matched_only['meeting_date'] = hand_matched_only['meeting_date'].dt.strftime('%m-%d-%Y')
 
-	return pd.concat(df_list, ignore_index=True)
-	
+		# overwrite items in the new df with hand-matched values in the old df
+		new_items_df.update(hand_matched_only)
+
+	return new_items_df
+
+
 
 '''
 matchReportsToItems
@@ -103,14 +145,6 @@ def matchReportsToItems(reports_df, items_df, parsed_agencies):
 
 	# add columns to reports df
 	reports_df['matched'] = False
-
-	# add columns to items_df
-	items_df['priority_wpusa'] = None
-	items_df['priority_sblc'] = None
-	items_df['priority_ibew'] = None
-	items_df['priority_unite'] = None
-	items_df['match_confirmed'] = False
-	generateItemIDs(items_df)
 
 	for i, row in reports_df.iterrows():
 

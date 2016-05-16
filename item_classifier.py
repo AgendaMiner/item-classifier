@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
 import json
+import cPickle as pickle
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.cross_validation import train_test_split
-from sklearn import linear_model, metrics
+from sklearn import linear_model, metrics, svm, grid_search, ensemble
 
 
 # to avoid truncating stuff
@@ -13,10 +14,19 @@ pd.set_option('display.max_rows', 1000)
 
 def main():
 
-	features_df, info_df = prepDataset('data/training_data.csv')
-	datasets = splitTrainingTestingDFs(features_df, 'priority_wpusa_any', 'match_id')
+	# features_df, info_df = prepDataset('data/training_data.csv')
+	# datasets = splitTrainingTestingDFs(features_df, 'priority_wpusa_any', 'match_id')
+
+	# write to disk to avoid expensive pre-processing every time
+	# pickle.dump({'info_df':info_df, 'datasets':datasets}, open("data/processed_data.p", "wb" ))
+	processed_data = pickle.load(open("data/processed_data.p", "rb" ))
+	datasets = processed_data['datasets']
+	info_df = processed_data['info_df']
+
 	# classifyLasso(datasets)
-	classifyLogisticRegression(datasets, info_df)
+	# classifyLogisticRegression(datasets, info_df)
+	# classifySVM(datasets, info_df)
+	classifyRandomForest(datasets, info_df)
 
 
 
@@ -147,6 +157,7 @@ def classifyLasso(datasets):
 	print(metrics.accuracy_score(datasets['y_test'], pred_classes))
 
 
+
 '''
 classifyLogisticRegression
 ==========================
@@ -156,12 +167,59 @@ then tests how well it performs on the testing data.
 def classifyLogisticRegression(datasets, info_df):
 	log_cv = linear_model.LogisticRegressionCV(cv=10, penalty='l1', scoring='recall', solver='liblinear', n_jobs=-1)
 	log_cv.fit(datasets['X_train'], datasets['y_train'])
-
 	preds = log_cv.predict(datasets['X_test'])
-	printNonZeroCoefficients(log_cv, datasets)
+	evaluateModel(log_cv, datasets, preds)
+
+
+
+'''
+classifySVM
+==========================
+Builds an SVM classifier from the training dataset,
+then tests how well it performs on the testing data.
+'''
+def classifySVM(datasets, info_df):
+	raw_svm = svm.SVC(decision_function_shape='ovr', class_weight='balanced')
+	# search_params = {'kernel':['rbf'], 'C':[1, 10, 100, 1000], 'gamma': [0.0001, 0.01, 1, 10, 100]}
+	search_params = {'kernel':['rbf'], 'C':[1, 10], 'gamma': [0.0001]}
+	svm_cv = grid_search.GridSearchCV(raw_svm, param_grid=search_params, scoring='recall', cv=5, n_jobs=-1, verbose=5)
+	svm_cv.fit(datasets['X_train'], datasets['y_train'])
+	print(svm_cv.best_params_)
+	preds = svm_cv.predict(datasets['X_test'])
+	evaluateModel(svm_cv, datasets, preds)
+
+
+
+'''
+classifyRandomForest
+==========================
+Builds a random forest classifier from the training dataset,
+then tests how well it performs on the testing data.
+'''
+def classifyRandomForest(datasets, info_df):
+	rand_forest = ensemble.RandomForestClassifier(n_estimators=20, oob_score=True, n_jobs=-1, verbose=5, class_weight='balanced')
+	search_params = {'max_depth':[10,100,1000]}
+	rand_forest_cv = grid_search.GridSearchCV(rand_forest, param_grid=search_params, scoring='recall', cv=5, n_jobs=-1, verbose=5)
+
+	rand_forest_cv.fit(datasets['X_train'], datasets['y_train'])
+	preds = rand_forest_cv.predict(datasets['X_test'])
+	evaluateModel(rand_forest_cv, datasets, preds)
+	# printNonZeroFeatures(rand_forest_cv, datasets)
+
+
+
+'''
+evaluateModel
+=============
+Prints out a variety of evaluation metrics to see how
+well the model performs.
+'''
+def evaluateModel(model, datasets, preds):
+	# printNonZeroCoefficients(log_cv, datasets)
 	print(metrics.classification_report(datasets['y_test'], preds))
 	print(metrics.confusion_matrix(datasets['y_test'], preds))
 	# matchPredsToInfoDF(datasets['y_test'], preds, datasets['ids_test'], info_df)
+
 
 '''
 printNonZeroCoefficients
@@ -172,6 +230,20 @@ to help with evaluating models.
 def printNonZeroCoefficients(model, datasets):
 	coefs = pd.DataFrame({'feature':datasets['feature_names'], 'coefficient':model.coef_[0]})
 	print(coefs[coefs['coefficient'] > 0])
+
+
+
+
+'''
+printNonZeroFeatures
+========================
+Print out the features from a random forest model that haven't been set to zero,
+to help with evaluating models.
+'''
+def printNonZeroFeatures(model, datasets):
+	coefs = pd.DataFrame({'feature':datasets['feature_names'], 'coefficient':model.feature_importances_})
+	print(coefs[coefs['coefficient'] > 0])
+
 
 
 '''
