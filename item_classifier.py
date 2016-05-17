@@ -1,10 +1,9 @@
 import pandas as pd
 import numpy as np
 import json
-import cPickle as pickle
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.cross_validation import train_test_split
-from sklearn import linear_model, metrics, svm, grid_search, ensemble
+from sklearn import linear_model, metrics, svm, grid_search, ensemble, neighbors, naive_bayes
 
 
 # to avoid truncating stuff
@@ -15,18 +14,13 @@ pd.set_option('display.max_rows', 1000)
 def main():
 
 	datasets = prepDatasets('data/training_data.csv')
-	# datasets = splitTrainingTestingDFs(features_df, 'priority_wpusa_any', 'match_id')
-
-	# write to disk to avoid expensive pre-processing every time
-	# pickle.dump({'info_df':info_df, 'datasets':datasets}, open("data/processed_data.p", "wb" ))
-	# processed_data = pickle.load(open("data/processed_data.p", "rb" ))
-	# datasets = processed_data['datasets']
-	# info_df = processed_data['info_df']
 
 	# classifyLasso(datasets)
 	# classifyLogisticRegression(datasets, 'priority_sblc_wpusa', 'match_id')
 	classifySVM(datasets, 'priority_sblc_wpusa', 'match_id')
+	classifyNaiveBayes(datasets, 'priority_sblc_wpusa', 'match_id')
 	# classifyRandomForest(datasets, info_df)
+	# classifyNearestNeighbors(datasets, 'priority_sblc_wpusa', 'match_id')
 
 
 
@@ -99,53 +93,6 @@ def buildDTM(df, colname):
 
 
 
-# '''
-# splitTrainingTestingDFs
-# ==============
-# Given a dataset, the name of a column containing the outcome variable, and the name of an ID column,
-# split the data into a training and testing set (each containing a matrix of X features and an array of Y indicators).
-# Return the split datasets as a dict.
-# '''
-# def splitTrainingTestingDFs(df, y_colname, id_colname):
-
-# 	# split out the positive observations to ensure there occur in both training and testing data.
-# 	pos_X_train, pos_X_test, pos_y_train, pos_y_test, pos_ids_train, pos_ids_test = splitObs(df, y_colname, id_colname, 1)
-# 	neg_X_train, neg_X_test, neg_y_train, neg_y_test, neg_ids_train, neg_ids_test = splitObs(df, y_colname, id_colname, 0)
-
-# 	# combine them back together
-# 	X_train = np.vstack((pos_X_train, neg_X_train))
-# 	X_test = np.vstack((pos_X_test, neg_X_test))
-# 	y_train = np.concatenate((pos_y_train, neg_y_train), axis=0)
-# 	y_test = np.concatenate((pos_y_test, neg_y_test), axis=0)
-# 	ids_train = np.concatenate((pos_ids_train, neg_ids_train), axis=0)
-# 	ids_test = np.concatenate((pos_ids_test, neg_ids_test), axis=0)
-
-# 	# build a list of feature names
-# 	df.drop([y_colname, id_colname], axis=1, inplace=True)
-# 	feature_names = df.columns.values
-
-# 	return {'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test, 'ids_train': ids_train, 'ids_test': ids_test, 'feature_names': feature_names}
-
-
-
-# '''
-# splitObs
-# ========
-# Given a dataframe, a y column name, an id column name, and a value of the y column,
-# splits the dataset into just the observations with that y value, and then
-# randomly into training and testing sets.
-# Returns 6 numpy arrays: X_train, X_test, y_train, y_test, ids_train, ids_test
-# '''
-# def splitObs(df, y_colname, id_colname, y_value):
-# 	df = df[df[y_colname] == y_value]
-# 	y = np.array(df[y_colname])
-# 	ids = np.array(df[id_colname])
-# 	features = np.array(df.drop([y_colname, id_colname], axis=1))
-# 	return train_test_split(features, y, ids, test_size=0.33)
-
-
-
-
 '''
 splitObs
 ========
@@ -156,8 +103,9 @@ Returns 6 arrays: X_train, X_test, y_train, y_test, ids_train, ids_test
 def splitObs(features, df, y_colname, id_colname):
 	y = np.array(df[y_colname])
 	ids = np.array(df[id_colname])
-	# features = np.array(df.drop([y_colname, id_colname], axis=1))
 	return train_test_split(features, y, ids, test_size=0.33, stratify=y)
+
+
 
 '''
 classifyLasso
@@ -173,21 +121,6 @@ def classifyLasso(datasets):
 	pred_classes = np.where(raw_preds >= 0.5, 1, 0)
 	print pred_classes
 	print(metrics.accuracy_score(datasets['y_test'], pred_classes))
-
-
-
-# '''
-# classifyLogisticRegression
-# ==========================
-# Builds a Logistic Regression classifier from the training dataset,
-# then tests how well it performs on the testing data.
-# '''
-# def classifyLogisticRegression(datasets, info_df):
-# 	log_cv = linear_model.LogisticRegressionCV(cv=10, penalty='l1', scoring='recall', solver='liblinear', n_jobs=-1)
-# 	log_cv.fit(datasets['X_train'], datasets['y_train'])
-# 	preds = log_cv.predict(datasets['X_test'])
-# 	evaluateModel(log_cv, datasets, preds)
-
 
 
 '''
@@ -237,9 +170,46 @@ def classifySVM(datasets, y_colname, id_colname):
 
 	print(metrics.classification_report(y_test, preds))
 	print(metrics.confusion_matrix(y_test, preds))
+	# matchPredsToInfoDF(y_test, preds, ids_test, datasets['info_df'])
 
 
-	# evaluateModel(svm_cv, datasets, preds)
+'''
+classifyNearestNeighbors
+==========================
+Builds a nearest neighbors classifier from the training dataset,
+then tests how well it performs on the testing data.
+'''
+def classifyNearestNeighbors(datasets, y_colname, id_colname):
+
+	X_train, X_test, y_train, y_test, ids_train, ids_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname)
+
+	knn = neighbors.KNeighborsClassifier(n_neighbors=3, weights='distance', n_jobs=-1)
+	knn.fit(X_train, y_train)
+	preds = knn.predict(X_test)
+
+	print(metrics.classification_report(y_test, preds))
+	print(metrics.confusion_matrix(y_test, preds))
+
+
+
+
+'''
+classifyNaiveBayes
+==========================
+Builds a naive Bayes classifier from the training dataset,
+then tests how well it performs on the testing data.
+'''
+def classifyNaiveBayes(datasets, y_colname, id_colname):
+
+	X_train, X_test, y_train, y_test, ids_train, ids_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname)
+
+	nb_model = naive_bayes.MultinomialNB(alpha=0.5)
+	nb_model.fit(X_train, y_train)
+	preds = nb_model.predict(X_test)
+
+	print(metrics.classification_report(y_test, preds))
+	print(metrics.confusion_matrix(y_test, preds))
+
 
 
 
