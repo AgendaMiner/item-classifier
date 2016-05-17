@@ -107,6 +107,7 @@ def mergeHandMatched(new_items_df):
 	new_items_df['topic_charters'] = None
 	new_items_df['topic_leadership'] = None
 	new_items_df['topic_job_training'] = None
+	new_items_df['topic_land_use'] = None
 	new_items_df['topic_other'] = None
 
 	generateItemIDs(new_items_df)
@@ -123,6 +124,7 @@ def mergeHandMatched(new_items_df):
 			(hm_df["topic_charters"] == 1) | 
 			(hm_df["topic_leadership"] == 1) | 
 			(hm_df["topic_job_training"] == 1) | 
+			(hm_df["topic_land_use"] == 1) | 
 			(hm_df["topic_other"] == 1)]
 		hand_matched_only['meeting_date'] = pd.to_datetime(hand_matched_only['meeting_date'])
 		hand_matched_only['meeting_date'] = hand_matched_only['meeting_date'].dt.strftime('%m-%d-%Y')
