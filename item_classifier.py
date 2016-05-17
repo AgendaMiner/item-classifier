@@ -14,14 +14,7 @@ pd.set_option('display.max_rows', 1000)
 def main():
 
 	datasets = prepDatasets('data/training_data.csv')
-
-	# classifyLasso(datasets)
-	# classifyLogisticRegression(datasets, 'priority_sblc_wpusa', 'match_id')
-	classifySVM(datasets, 'priority_sblc_wpusa', 'match_id')
-	classifyNaiveBayes(datasets, 'priority_sblc_wpusa', 'match_id')
-	# classifyRandomForest(datasets, info_df)
-	# classifyNearestNeighbors(datasets, 'priority_sblc_wpusa', 'match_id')
-
+	exploreClassifiers(datasets, 'priority_sblc_wpusa', 'match_id')
 
 
 
@@ -86,11 +79,44 @@ Returns the DTM as a pandas DF.
 def buildDTM(df, colname):
 	text_list = df[colname].tolist()
 
-	vectorizer = CountVectorizer(strip_accents="ascii", ngram_range=(1,3), stop_words='english', max_df=0.9, min_df=0.001) #### TODO - CUT DOWN THE NUMBER OF FEATURES
+	vectorizer = CountVectorizer(strip_accents="ascii", ngram_range=(1,3), stop_words='english', max_df=0.9, min_df=0.001)
 	counts_matrix = vectorizer.fit_transform(text_list)
 	
 	return [counts_matrix, vectorizer.get_feature_names()]
 
+
+
+'''
+exploreClassifiers
+==================
+Explore which items different classifiers are catching,
+and try combining the models.
+'''
+def exploreClassifiers(datasets, y_colname, id_colname):
+
+	X_train, X_test, y_train, y_test, ids_train, ids_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname)
+	test_train_sets = {'X_train': X_train, 
+					'X_test': X_test, 
+					'y_train': y_train, 
+					'y_test': y_test, 
+					'ids_train': ids_train, 
+					'ids_test': ids_test}
+
+	preds_lr = classifyLogisticRegression(datasets, test_train_sets, y_colname, id_colname)
+	preds_svm = classifySVM(datasets, test_train_sets, y_colname, id_colname)
+	preds_nb = classifyNaiveBayes(datasets, test_train_sets, y_colname, id_colname)
+	preds_knn = classifyNearestNeighbors(datasets, test_train_sets, y_colname, id_colname)
+	# # classifyRandomForest(datasets, info_df)
+
+	pred_classes = {'lr': preds_lr[0], 'svm': preds_svm[0], 'nb': preds_nb[0], 'knn': preds_knn[0]}
+	pred_probs_train = {'lr': preds_lr[1][:,1], 'svm': preds_svm[1][:,1], 'nb': preds_nb[1][:,1], 'knn': preds_knn[1][:,1]}
+	pred_probs_test = {'lr': preds_lr[2][:,1], 'svm': preds_svm[2][:,1], 'nb': preds_nb[2][:,1], 'knn': preds_knn[2][:,1]}
+
+	# compare the results of each classifier
+	compareClassifiers(datasets, test_train_sets, pred_classes)
+
+	# try combining the predicted probabilities from each classifier into an ensemble classifier
+	combineClassifiers(datasets, test_train_sets, pred_probs_train, pred_probs_test)
 
 
 '''
@@ -108,39 +134,24 @@ def splitObs(features, df, y_colname, id_colname):
 
 
 '''
-classifyLasso
-=============
-Builds a LASSO classifier from the training dataset,
-then tests how well it performs on the testing data.
-'''
-def classifyLasso(datasets):
-
-	lasso_cv = linear_model.LassoCV(cv = 10, verbose = True)
-	lasso_cv.fit(datasets['X_train'], datasets['y_train'])
-	raw_preds = lasso_cv.predict(datasets['X_test'])
-	pred_classes = np.where(raw_preds >= 0.5, 1, 0)
-	print pred_classes
-	print(metrics.accuracy_score(datasets['y_test'], pred_classes))
-
-
-'''
 classifyLogisticRegression
 ==========================
 Builds a Logistic Regression classifier from the training dataset,
 then tests how well it performs on the testing data.
 '''
-def classifyLogisticRegression(datasets, y_colname, id_colname):
-
-	X_train, X_test, y_train, y_test, ids_train, ids_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname)
+def classifyLogisticRegression(datasets, test_train_sets, y_colname, id_colname):
 
 	log_cv = linear_model.LogisticRegressionCV(cv=10, penalty='l1', scoring='recall', solver='liblinear', n_jobs=-1)
-	log_cv.fit(X_train, y_train)
-	preds = log_cv.predict(X_test)
+	log_cv.fit(test_train_sets['X_train'], test_train_sets['y_train'])
+	pred_classes = log_cv.predict(test_train_sets['X_test'])
+	pred_probs_train = log_cv.predict_proba(test_train_sets['X_train'])
+	pred_probs_test = log_cv.predict_proba(test_train_sets['X_test'])
 
-	# evaluateModel(log_cv, datasets, preds)
+	print("LOGISTIC REGRESSION")
+	print(metrics.classification_report(test_train_sets['y_test'], pred_classes))
+	print(metrics.confusion_matrix(test_train_sets['y_test'], pred_classes))
 
-	print(metrics.classification_report(y_test, preds))
-	print(metrics.confusion_matrix(y_test, preds))
+	return [pred_classes, pred_probs_train, pred_probs_test]
 
 
 
@@ -150,27 +161,29 @@ classifySVM
 Builds an SVM classifier from the training dataset,
 then tests how well it performs on the testing data.
 '''
-def classifySVM(datasets, y_colname, id_colname):
-
-	X_train, X_test, y_train, y_test, ids_train, ids_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname)
+def classifySVM(datasets, test_train_sets, y_colname, id_colname):
 
 	# cross validate to find best hyperparameters
 	# raw_svm = svm.SVC(decision_function_shape='ovr', class_weight='balanced')
 	# search_params = {'kernel':['rbf'], 'C':[1, 10, 100, 1000], 'gamma': [0.00001, 0.0001, 0.01, 1, 10, 100]}
-	# # search_params = {'kernel':['rbf'], 'C':[1, 10], 'gamma': [0.0001]}
 	# svm_cv = grid_search.GridSearchCV(raw_svm, param_grid=search_params, scoring='recall', cv=5, n_jobs=-1, verbose=5)
-	# svm_cv.fit(X_train, y_train)
+	# svm_cv.fit(test_train_sets['X_train'], test_train_sets['y_train'])
 	# print(svm_cv.best_params_)
 
 	# use best hyperparameters in the future (uncomment above and comment out this line to re-cross validate)
-	best_svm = svm.SVC(decision_function_shape='ovr', class_weight='balanced', kernel='rbf', C=100, gamma=0.0001)
-	best_svm.fit(X_train, y_train)
+	best_svm = svm.SVC(decision_function_shape='ovr', class_weight='balanced', kernel='rbf', C=100, gamma=0.0001, probability=True)
+	best_svm.fit(test_train_sets['X_train'], test_train_sets['y_train'])
 
-	preds = best_svm.predict(X_test)
+	pred_classes = best_svm.predict(test_train_sets['X_test'])
+	pred_probs_train = best_svm.predict_proba(test_train_sets['X_train'])
+	pred_probs_test = best_svm.predict_proba(test_train_sets['X_test'])
 
-	print(metrics.classification_report(y_test, preds))
-	print(metrics.confusion_matrix(y_test, preds))
-	# matchPredsToInfoDF(y_test, preds, ids_test, datasets['info_df'])
+	print("SVM")
+	print(metrics.classification_report(test_train_sets['y_test'], pred_classes))
+	print(metrics.confusion_matrix(test_train_sets['y_test'], pred_classes))
+
+	return [pred_classes, pred_probs_train, pred_probs_test]
+
 
 
 '''
@@ -179,17 +192,19 @@ classifyNearestNeighbors
 Builds a nearest neighbors classifier from the training dataset,
 then tests how well it performs on the testing data.
 '''
-def classifyNearestNeighbors(datasets, y_colname, id_colname):
-
-	X_train, X_test, y_train, y_test, ids_train, ids_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname)
+def classifyNearestNeighbors(datasets, test_train_sets, y_colname, id_colname):
 
 	knn = neighbors.KNeighborsClassifier(n_neighbors=3, weights='distance', n_jobs=-1)
-	knn.fit(X_train, y_train)
-	preds = knn.predict(X_test)
+	knn.fit(test_train_sets['X_train'], test_train_sets['y_train'])
+	pred_classes = knn.predict(test_train_sets['X_test'])
+	pred_probs_test = knn.predict_proba(test_train_sets['X_test'])
+	pred_probs_train = knn.predict_proba(test_train_sets['X_train'])
 
-	print(metrics.classification_report(y_test, preds))
-	print(metrics.confusion_matrix(y_test, preds))
+	print("K-NEAREST NEIGHBORS")
+	print(metrics.classification_report(test_train_sets['y_test'], pred_classes))
+	print(metrics.confusion_matrix(test_train_sets['y_test'], pred_classes))
 
+	return [pred_classes, pred_probs_train, pred_probs_test]
 
 
 
@@ -199,17 +214,19 @@ classifyNaiveBayes
 Builds a naive Bayes classifier from the training dataset,
 then tests how well it performs on the testing data.
 '''
-def classifyNaiveBayes(datasets, y_colname, id_colname):
-
-	X_train, X_test, y_train, y_test, ids_train, ids_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname)
+def classifyNaiveBayes(datasets, test_train_sets, y_colname, id_colname):
 
 	nb_model = naive_bayes.MultinomialNB(alpha=0.5)
-	nb_model.fit(X_train, y_train)
-	preds = nb_model.predict(X_test)
+	nb_model.fit(test_train_sets['X_train'], test_train_sets['y_train'])
+	pred_classes = nb_model.predict(test_train_sets['X_test'])
+	pred_probs_test = nb_model.predict_proba(test_train_sets['X_test'])
+	pred_probs_train = nb_model.predict_proba(test_train_sets['X_train'])
 
-	print(metrics.classification_report(y_test, preds))
-	print(metrics.confusion_matrix(y_test, preds))
+	print("NAIVE BAYES")
+	print(metrics.classification_report(test_train_sets['y_test'], pred_classes))
+	print(metrics.confusion_matrix(test_train_sets['y_test'], pred_classes))
 
+	return [pred_classes, pred_probs_train, pred_probs_test]
 
 
 
@@ -232,19 +249,6 @@ def classifyRandomForest(datasets, info_df):
 
 
 '''
-evaluateModel
-=============
-Prints out a variety of evaluation metrics to see how
-well the model performs.
-'''
-def evaluateModel(model, datasets, preds):
-	# printNonZeroCoefficients(log_cv, datasets)
-	print(metrics.classification_report(datasets['y_test'], preds))
-	print(metrics.confusion_matrix(datasets['y_test'], preds))
-	# matchPredsToInfoDF(datasets['y_test'], preds, datasets['ids_test'], info_df)
-
-
-'''
 printNonZeroCoefficients
 ========================
 Print out the coefficients from regularized model that haven't been set to zero,
@@ -253,7 +257,6 @@ to help with evaluating models.
 def printNonZeroCoefficients(model, datasets):
 	coefs = pd.DataFrame({'feature':datasets['feature_names'], 'coefficient':model.coef_[0]})
 	print(coefs[coefs['coefficient'] > 0])
-
 
 
 
@@ -291,7 +294,100 @@ def matchPredsToInfoDF(true_y, pred_y, ids, info_df):
 
 
 
+'''
+compareClassifiers
+==================
+Given predictions from several different classifiers,
+see how they compare.
+'''
+def compareClassifiers(datasets, test_train_sets, preds_dict):
+	preds_df = pd.DataFrame({'true_y': test_train_sets['y_test']}, index=test_train_sets['ids_test'])
 
+	for key in preds_dict:
+		preds_df[key] = preds_dict[key]
+
+	preds_df = datasets['info_df'].join(preds_df, how='inner')
+
+	# how many do all predict correctly as true
+	print("All True Positive")
+	print(preds_df[preds_df.eq(1, axis='index').all(1)].shape)
+
+	print("SVM & NB true positive")
+	print(preds_df[(preds_df['true_y'] == 1) & (preds_df['svm'] == 1) & (preds_df['nb'] == 1)].shape)
+
+	print("NB & SVM false negative")
+	print(preds_df[(preds_df['true_y'] == 1) & (preds_df['nb'] == 0) & (preds_df['svm'] == 0)].shape)
+
+
+	print("SVM true positive, nb false negative")
+	print(preds_df[(preds_df['true_y'] == 1) & (preds_df['svm'] == 1) & (preds_df['nb'] == 0)].shape)
+
+	print("naive bayes true positive, SVM false negative")
+	print(preds_df[(preds_df['true_y'] == 1) & (preds_df['nb'] == 1) & (preds_df['svm'] == 0)].shape)
+
+	print("KNN true positive, NB & SVM false negative")
+	print(preds_df[(preds_df['true_y'] == 1) & (preds_df['knn'] == 1) & (preds_df['nb'] == 0) & (preds_df['svm'] == 0)].shape)
+
+	print("-----------------")
+
+	print("SVM true negative, NB false positive")
+	print(preds_df[(preds_df['true_y'] == 0) & (preds_df['nb'] == 1) & (preds_df['svm'] == 0)].shape)
+
+	print("NB true negative, SVM false positive")
+	print(preds_df[(preds_df['true_y'] == 0) & (preds_df['nb'] == 0) & (preds_df['svm'] == 1)].shape)
+
+	# print("========= NB & SVM FALSE NEGATIVES==========")
+	# print(preds_df.loc[(preds_df['true_y'] == 1) & (preds_df['nb'] == 0) & (preds_df['svm'] == 0), 'item_text'])
+
+
+
+
+'''
+combineClassifiers
+==================
+Given a dict of predicted probabilities that an observation is positive from several different classifiers,
+try building an ensemble classifier that aggregrates together these estimates.
+'''
+def combineClassifiers(datasets, test_train_sets, pred_probs_train, pred_probs_test):
+	X_train = np.column_stack((pred_probs_train['lr'], pred_probs_train['svm'], pred_probs_train['nb'], pred_probs_train['knn']))
+	X_test = np.column_stack((pred_probs_test['lr'], pred_probs_test['svm'], pred_probs_test['nb'], pred_probs_test['knn']))
+
+	# X_train = np.column_stack((pred_probs_train['lr'], pred_probs_train['svm'], pred_probs_train['nb']))
+	# X_test = np.column_stack((pred_probs_test['lr'], pred_probs_test['svm'], pred_probs_test['nb']))
+
+	# try a simple logistic regression
+	print("COMBINED LOG REGRESSION CV")
+	log_cv = linear_model.LogisticRegressionCV(cv=10, penalty='l1', scoring='recall', solver='liblinear', n_jobs=-1)
+	log_cv.fit(X_train, test_train_sets['y_train'])
+	pred_classes = log_cv.predict(X_test)
+
+	print(metrics.classification_report(test_train_sets['y_test'], pred_classes))
+	print(metrics.confusion_matrix(test_train_sets['y_test'], pred_classes))
+	print(log_cv.coef_)
+
+	# try naive bayes
+	print("COMBINED NAIVE BAYES")
+	nb_model = naive_bayes.GaussianNB()
+	nb_model.fit(X_train, test_train_sets['y_train'])
+	pred_classes = nb_model.predict(X_test)
+
+	print(metrics.classification_report(test_train_sets['y_test'], pred_classes))
+	print(metrics.confusion_matrix(test_train_sets['y_test'], pred_classes))
+
+	# try an SVM
+	print("COMBINED SVM")
+	# raw_svm = svm.SVC(decision_function_shape='ovr', class_weight='balanced')
+	# search_params = {'kernel':['rbf'], 'C':[1, 10, 100, 1000], 'gamma': [0.00001, 0.0001, 0.01, 1, 10, 100]}
+	# svm_cv = grid_search.GridSearchCV(raw_svm, param_grid=search_params, scoring='recall', cv=5, n_jobs=-1, verbose=5)
+	# svm_cv.fit(X_train, test_train_sets['y_train'])
+	# print(svm_cv.best_params_)
+
+	best_svm = svm.SVC(decision_function_shape='ovr', class_weight='balanced', kernel='rbf', C=1, gamma=1)
+	best_svm.fit(X_train, test_train_sets['y_train'])
+	pred_classes = best_svm.predict(X_test)
+
+	print(metrics.classification_report(test_train_sets['y_test'], pred_classes))
+	print(metrics.confusion_matrix(test_train_sets['y_test'], pred_classes))
 
 
 if __name__ == '__main__':
