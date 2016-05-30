@@ -40,6 +40,9 @@ def prepDatasets(csv_filepath):
 
 	info_df['priority_sblc_wpusa'] = np.where((info_df['priority_wpusa_any']==1) | (info_df['priority_sblc_any']==1), 1, 0)
 
+	print(info_df[info_df['priority_sblc_wpusa'] == 1].shape)
+	print(info_df.shape)
+
 	# set empty values in topics to zero
 	info_df['topic_labor'] = np.where(info_df['topic_labor']==1,1,0)
 	info_df['topic_job_training'] = np.where(info_df['topic_job_training']==1,1,0)
@@ -117,40 +120,40 @@ and try combining the models.
 '''
 def exploreClassifiers(datasets, y_colname, id_colname):
 
-	# X_train, X_test, y_train, y_test, ids_train, ids_test, topics_train, topics_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname, 'topic')
-	# test_train_sets = {'X_train': X_train, 
-	# 				'X_test': X_test, 
-	# 				'y_train': y_train, 
-	# 				'y_test': y_test, 
-	# 				'ids_train': ids_train, 
-	# 				'ids_test': ids_test,
-	# 				'topics_train': topics_train,
-	# 				'topics_test': topics_test}
+	X_train, X_test, y_train, y_test, ids_train, ids_test, topics_train, topics_test = splitObs(datasets['dtm'], datasets['info_df'], y_colname, id_colname, 'topic')
+	test_train_sets = {'X_train': X_train, 
+					'X_test': X_test, 
+					'y_train': y_train, 
+					'y_test': y_test, 
+					'ids_train': ids_train, 
+					'ids_test': ids_test,
+					'topics_train': topics_train,
+					'topics_test': topics_test}
 
-	# preds_lr = classifyLogisticRegression(datasets, test_train_sets, y_colname, id_colname)
-	# preds_svm = classifySVM(datasets, test_train_sets, y_colname, id_colname)
-	# preds_nb = classifyNaiveBayes(datasets, test_train_sets, y_colname, id_colname)
-	# preds_knn = classifyNearestNeighbors(datasets, test_train_sets, y_colname, id_colname)
+	preds_lr = classifyLogisticRegression(datasets, test_train_sets, y_colname, id_colname)
+	preds_svm = classifySVM(datasets, test_train_sets, y_colname, id_colname)
+	preds_nb = classifyNaiveBayes(datasets, test_train_sets, y_colname, id_colname)
+	preds_knn = classifyNearestNeighbors(datasets, test_train_sets, y_colname, id_colname)
 	# # classifyRandomForest(datasets, info_df)
 
 	# # try predicting topics
-	# topic_preds = classifyTopics(test_train_sets)
+	topic_preds = classifyTopics(test_train_sets)
 
-	# pred_classes_train = {'lr': preds_lr[0], 'svm': preds_svm[0], 'nb': preds_nb[0], 'knn': preds_knn[0]}
-	# pred_classes_test = {'lr': preds_lr[1], 'svm': preds_svm[1], 'nb': preds_nb[1], 'knn': preds_knn[1]}
+	pred_classes_train = {'lr': preds_lr[0], 'svm': preds_svm[0], 'nb': preds_nb[0], 'knn': preds_knn[0]}
+	pred_classes_test = {'lr': preds_lr[1], 'svm': preds_svm[1], 'nb': preds_nb[1], 'knn': preds_knn[1]}
 
-	# pred_probs_train = {'lr': preds_lr[2][:,1], 
-	# 					'svm': preds_svm[2][:,1], 
-	# 					'nb': preds_nb[2][:,1], 
-	# 					'knn': preds_knn[2][:,1], 
-	# 					'topics_lr': topic_preds[0][1],
-	# 					'topics_nb': topic_preds[1][1]}
-	# pred_probs_test = {'lr': preds_lr[3][:,1], 
-	# 					'svm': preds_svm[3][:,1], 
-	# 					'nb': preds_nb[3][:,1], 
-	# 					'knn': preds_knn[3][:,1],
-	# 					'topics_lr': topic_preds[0][2],
-	# 					'topics_nb': topic_preds[1][2]}
+	pred_probs_train = {'lr': preds_lr[2][:,1], 
+						'svm': preds_svm[2][:,1], 
+						'nb': preds_nb[2][:,1], 
+						'knn': preds_knn[2][:,1], 
+						'topics_lr': topic_preds[0][1],
+						'topics_nb': topic_preds[1][1]}
+	pred_probs_test = {'lr': preds_lr[3][:,1], 
+						'svm': preds_svm[3][:,1], 
+						'nb': preds_nb[3][:,1], 
+						'knn': preds_knn[3][:,1],
+						'topics_lr': topic_preds[0][2],
+						'topics_nb': topic_preds[1][2]}
 
 	# dump to disk to save time
 	# pickle.dump(test_train_sets, open("data/test_train_sets.p", "wb" ))
@@ -160,12 +163,12 @@ def exploreClassifiers(datasets, y_colname, id_colname):
 	# pickle.dump(pred_probs_test, open("data/pred_probs_test.p", "wb" ))
 	# pickle.dump(topic_preds, open("data/topic_preds.p", "wb" ))
 
-	test_train_sets = pickle.load(open("data/test_train_sets.p", "rb" ))
-	pred_classes_train = pickle.load(open("data/pred_classes_train.p", "rb" ))
-	pred_classes_test = pickle.load(open("data/pred_classes_test.p", "rb" ))
-	pred_probs_train = pickle.load(open("data/pred_probs_train.p", "rb" ))
-	pred_probs_test = pickle.load(open("data/pred_probs_test.p", "rb" ))
-	topic_preds = pickle.load(open("data/topic_preds.p", "rb" ))
+	# test_train_sets = pickle.load(open("data/test_train_sets.p", "rb" ))
+	# pred_classes_train = pickle.load(open("data/pred_classes_train.p", "rb" ))
+	# pred_classes_test = pickle.load(open("data/pred_classes_test.p", "rb" ))
+	# pred_probs_train = pickle.load(open("data/pred_probs_train.p", "rb" ))
+	# pred_probs_test = pickle.load(open("data/pred_probs_test.p", "rb" ))
+	# topic_preds = pickle.load(open("data/topic_preds.p", "rb" ))
 
 	# compare the results of each classifier
 	compareClassifiers(datasets, test_train_sets, pred_classes_test)
@@ -494,6 +497,7 @@ def manuallyCombineClassifiers(datasets, test_train_sets, pred_classes_train, pr
 	preds_test = buildManualClassifier(test_train_sets, classes_df_test, topics_test)
 
 
+	print("MANUAL CLASSIFIER")
 	print(metrics.classification_report(test_train_sets['y_test'], preds_test))
 	print(metrics.confusion_matrix(test_train_sets['y_test'], preds_test))
 
